@@ -1,0 +1,13 @@
+# python virtual environment folders
+venv/
+ENV/
+env/
+
+# cache
+__pycache__/
+*.py[cod]
+
+# system files
+.DS_Store
+.vscode/
+*.log
