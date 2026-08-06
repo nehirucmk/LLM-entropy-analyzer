@@ -15,7 +15,7 @@ def load_model_and_tokenizer():
     print(f"Loading model into RAM: {MODEL_NAME}...")
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        torch_dtype=torch.float32,
+        dtype=torch.float32,
         device_map="cpu"
     )
     
