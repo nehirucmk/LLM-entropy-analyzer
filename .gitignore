@@ -1,38 +1,94 @@
-# Virtual Environments
+# virtual environments
 venv/
+.venv/
 env/
 ENV/
-.venv/
+env.bak/
+venv.bak/
 
-# Python Cache & Compiled Files
+# python cache, build artifacts
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# IDE & System Files
-.vscode/
-.idea/
-.DS_Store
-*.log
-
-# AI Model Weights & Checkpoints (Boyut Koruması)
+# ai models, weights, large datasets
 *.pt
 *.pth
 *.bin
 *.safetensors
 *.onnx
 *.h5
+*.gguf
+*.tflite
+*.ckpt
 models/
 checkpoints/
+hf_cache/
+.cache/
+dataset/
+datasets/
 
-# Secrets & Environment Variables (Güvenlik Koruması)
+# secrets, tokens environment vars
 .env
 *.env
+.env.*
 *.pem
 *.key
 .hf_token
+secrets.toml
+.streamlit/secrets.toml
 
-# Outputs & Test Logs
+# ide, editors, os system files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# testing, coverage, logs
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+pytestdebug.txt
 logs/
-images/
-*.png
+*.log
+wandb/
+
+# jupyter notebooks 
+.ipynb_checkpoints
