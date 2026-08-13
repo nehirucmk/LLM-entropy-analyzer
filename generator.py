@@ -18,6 +18,13 @@ def generate_stream(prompt: str,
         {"role": "user", "content": prompt}
     ]
 
+    # format input prompt with template
+    formatted_prompt = tokenizer.apply_chat_template(
+        messages, 
+        tokenize=False, 
+        add_generation_prompt=True
+    )
+
     inputs = tokenizer(formatted_prompt, return_tensors="pt")
     input_ids= inputs["input_ids"]
     eos_token_id=tokenizer.eos_token_id
