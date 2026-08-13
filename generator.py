@@ -4,8 +4,12 @@ from model_loader import load_model_and_tokenizer
 from processing import process_logits
 from metrics import calculate_entropy, EntropyTracker
 
-def generate_stream(prompt: str, max_new_tokens: int =20)-> Generator[Dict[str,Any], None, None]:
-    model, tokenizer = load_model_and_tokenizer()
+def generate_stream(prompt: str, 
+                    max_new_tokens: int =20,
+                    model: Any = None,
+                    tokenizer: Any = None)-> Generator[Dict[str,Any], None, None]:
+    if model is None or tokenizer is None:
+        model, tokenizer = load_model_and_tokenizer()
     tracker = EntropyTracker(window_size=20)
 
     # format input
