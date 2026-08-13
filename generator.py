@@ -1,50 +1,59 @@
 import torch
-from typing import List
+from typing import Dict, Any, Generator
 from model_loader import load_model_and_tokenizer
+from processing import process_logits
+from metrics import calculate_entropy, EntropyTracker
 
-def generate_step_by_step(prompt: str, max_new_tokens: int = 20):
-    model, tokenizer =load_model_and_tokenizer()
+def generate_stream(prompt: str, max_new_tokens: int =20)-> Generator[Dict[str,Any], None, None]:
+    model, tokenizer = load_model_and_tokenizer()
+    tracker = EntropyTracker(window_size=20)
 
-    # format input with chat template
+    # format input
     messages = [{"role": "user", "content": prompt}]
     formatted_prompt = tokenizer.apply_chat_template(
-        messages, 
-        tokenize=False, 
-        add_generation_prompt= True
+        messages,
+        tokenize=False,
+        add_generation_prompt=True
     )
 
-    # formatted prompt -> tensor
     inputs = tokenizer(formatted_prompt, return_tensors="pt")
-    input_ids = inputs["input_ids"]
+    input_ids= inputs["input_ids"]
+    eos_token_id=tokenizer.eos_token_id
 
-    eos_token_id = tokenizer.eos_token_id
-    generated_tokens: List[int] = []
-
-    print(f"Prompt: {prompt}\nGenerating: ", end="", flush=True)
-
-    # custom generation loop
     step = 0
     while step < max_new_tokens:
         with torch.no_grad():
-            outputs = model(input_ids)
+            outputs = model (input_ids)
 
-        next_token_logits = outputs.logits[0, -1, :]
+        # logits for the last generated position
+        last_token_logits = outputs.logits[0, -1, :]
 
-        next_token_id = torch.argmax(next_token_logits, dim=-1).item()
+        processed = process_logits(last_token_logits, tokenizer)
 
-        if next_token_id == eos_token_id:
+        probabilities = torch.softmax(last_token_logits, dim= -1)
+        entropy = calculate_entropy(probabilities)
+        stats= tracker.update(entropy)
+
+        top1_id = torch.argmax(last_token_logits, dim=-1).item()
+        if top1_id == eos_token_id:
             break
 
-        generated_tokens.append(next_token_id)
-        next_token_tensor = torch.tensor([[next_token_id]])
+        next_token_tensor = torch.tensor([[top1_id]])
         input_ids = torch.cat([input_ids, next_token_tensor], dim=-1)
 
-        token_str = tokenizer.decode([next_token_id])
-        print(token_str, end="", flush=True)
+        yield{
+            "token": processed["top1_token"],
+            "token_id": top1_id,
+            "candidates": processed["candidates"],
+            "delta_p": processed["delta_p"],
+            "entropy": entropy,
+            "z_score": stats["z_score"],
+            "mean_entropy": stats["mean"]
+        }        
 
-        step += 1
-
-    print("\n\nDone.")
+        step +=1
 
 if __name__ == "__main__":
-    generate_step_by_step("Türkiye'nin başkenti neresidir?", max_new_tokens=15)
+    print("***** Streaming Generation Test *****")
+    for packet in generate_stream("Türkiye'nin başkenti neresidir?", max_new_tokens=10):
+        print(f"Token: '{packet['token']:<10}' | H: {packet['entropy']:.2f} | Z: {packet['z_score']:.2f} | Delta P: {packet['delta_p']*100:.1f}%")        
