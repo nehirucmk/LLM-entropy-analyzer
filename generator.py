@@ -13,12 +13,10 @@ def generate_stream(prompt: str,
     tracker = EntropyTracker(window_size=20)
 
     # format input
-    messages = [{"role": "user", "content": prompt}]
-    formatted_prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
+    messages = [
+        {"role": "system", "content": "Sen sadece Türkçe cevap veren yardımcı bir yapay zekasın."},
+        {"role": "user", "content": prompt}
+    ]
 
     inputs = tokenizer(formatted_prompt, return_tensors="pt")
     input_ids= inputs["input_ids"]
