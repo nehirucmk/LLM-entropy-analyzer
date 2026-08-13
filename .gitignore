@@ -1,13 +1,38 @@
-# python virtual environment folders
+# Virtual Environments
 venv/
-ENV/
 env/
+ENV/
+.venv/
 
-# cache
+# Python Cache & Compiled Files
 __pycache__/
 *.py[cod]
+*$py.class
 
-# system files
-.DS_Store
+# IDE & System Files
 .vscode/
+.idea/
+.DS_Store
 *.log
+
+# AI Model Weights & Checkpoints (Boyut Koruması)
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.h5
+models/
+checkpoints/
+
+# Secrets & Environment Variables (Güvenlik Koruması)
+.env
+*.env
+*.pem
+*.key
+.hf_token
+
+# Outputs & Test Logs
+logs/
+images/
+*.png
