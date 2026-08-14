@@ -1,3 +1,4 @@
+import sys
 import torch
 from typing import Dict, Any, Generator
 from model_loader import load_model_and_tokenizer
@@ -9,22 +10,21 @@ def generate_stream(
     max_new_tokens: int = 80, 
     model: Any = None, 
     tokenizer: Any = None,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    repetition_penalty: float = 1.15
+    temperature: float = 0.0,
+    top_k: int = 50,
+    window_size: int = 20
 ) -> Generator[Dict[str, Any], None, None]:
     
     if model is None or tokenizer is None:
         model, tokenizer = load_model_and_tokenizer()
 
-    tracker = EntropyTracker(window_size=20)
+    tracker = EntropyTracker(window_size=window_size)
 
-    # format prompt with chat template
+    # prepare prompt with chat template
     messages = [
         {"role": "system", "content": "You are a concise, accurate AI assistant. Answer directly and briefly."},
         {"role": "user", "content": prompt}
     ]
-
     formatted_prompt = tokenizer.apply_chat_template(
         messages, 
         tokenize=False, 
@@ -34,7 +34,7 @@ def generate_stream(
     inputs = tokenizer(formatted_prompt, return_tensors="pt")
     input_ids = inputs["input_ids"]
 
-    # collect valid stop tokens for qwen architecture
+    # collect stop tokens
     stop_token_ids = set()
     if tokenizer.eos_token_id is not None:
         stop_token_ids.add(tokenizer.eos_token_id)
@@ -48,49 +48,30 @@ def generate_stream(
         with torch.no_grad():
             outputs = model(input_ids)
 
-        last_token_logits = outputs.logits[0, -1, :].clone()
-
-        # extract telemetric measurements from unmodified logits
-        raw_probs = torch.softmax(last_token_logits, dim=-1)
+        # telemetry calculations on clean logits
+        raw_logits = outputs.logits[0, -1, :]
+        raw_probs = torch.softmax(raw_logits, dim=-1)
         entropy = calculate_entropy(raw_probs)
         stats = tracker.update(entropy)
-        processed = process_logits(last_token_logits, tokenizer)
+        processed = process_logits(raw_logits, tokenizer, top_k=5)
 
-        # apply repetition penalty to penalize previously seen tokens
-        if repetition_penalty != 1.0:
-            for prev_token_id in set(input_ids[0].tolist()):
-                if last_token_logits[prev_token_id] < 0:
-                    last_token_logits[prev_token_id] *= repetition_penalty
-                else:
-                    last_token_logits[prev_token_id] /= repetition_penalty
-
-        # temperature and top-p sampling
-        if temperature > 0:
-            scaled_logits = last_token_logits / max(temperature, 1e-5)
-            sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True)
-            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-
-            sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-            sorted_indices_to_remove[..., 0] = False
-
-            indices_to_remove = sorted_indices[sorted_indices_to_remove]
-            scaled_logits[indices_to_remove] = float('-inf')
-
-            filtered_probs = torch.softmax(scaled_logits, dim=-1)
-            selected_token_id = torch.multinomial(filtered_probs, num_samples=1).item()
+        # token selection
+        if temperature <= 1e-4:
+            selected_token_id = torch.argmax(raw_logits, dim=-1).item()
         else:
-            selected_token_id = torch.argmax(last_token_logits, dim=-1).item()
+            scaled_logits = raw_logits / temperature
+            top_values, top_indices = torch.topk(scaled_logits, k=top_k)
+            safe_probs = torch.softmax(top_values, dim=-1)
+            choice_idx = torch.multinomial(safe_probs, num_samples=1).item()
+            selected_token_id = top_indices[choice_idx].item()
 
-        # stop generation if stop token is emitted
+        # stop on end token
         if selected_token_id in stop_token_ids:
             break
 
-        # append selected token to sequence context
+        # advance sequence
         next_token_tensor = torch.tensor([[selected_token_id]])
         input_ids = torch.cat([input_ids, next_token_tensor], dim=-1)
-
-        # decode actual selected token string
         selected_token_str = tokenizer.decode([selected_token_id])
 
         yield {
@@ -104,3 +85,20 @@ def generate_stream(
         }
 
         step += 1
+
+
+if __name__ == "__main__":
+    try:
+        # load model first so weight progress bar finishes before prompt text
+        model, tokenizer = load_model_and_tokenizer()
+
+        test_prompt = "What is the chemical symbol for gold?"
+        print(f"\nPrompt: {test_prompt}\nGenerating: ", end="", flush=True)
+
+        for packet in generate_stream(test_prompt, max_new_tokens=40, model=model, tokenizer=tokenizer):
+            print(packet["token"], end="", flush=True)
+
+        print("\n\n[Done]")
+    except KeyboardInterrupt:
+        print("\n\n[Process terminated by user]")
+        sys.exit(0)
