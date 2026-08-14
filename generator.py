@@ -44,9 +44,17 @@ def generate_stream(
             stop_token_ids.add(token_id)
 
     step = 0
+    past_key_values = None
+    current_input_ids = input_ids
+
     while step < max_new_tokens:
         with torch.no_grad():
-            outputs = model(input_ids)
+            if past_key_values is None:
+                outputs = model(current_input_ids, use_cache=True)
+            else:
+                outputs = model(current_input_ids, past_key_values=past_key_values, use_cache=True)
+
+        past_key_values = outputs.past_key_values
 
         # telemetry calculations on clean logits
         raw_logits = outputs.logits[0, -1, :]
@@ -69,9 +77,8 @@ def generate_stream(
         if selected_token_id in stop_token_ids:
             break
 
-        # advance sequence
-        next_token_tensor = torch.tensor([[selected_token_id]])
-        input_ids = torch.cat([input_ids, next_token_tensor], dim=-1)
+        # advance sequence with only 1 token (O(1) memory pass)
+        current_input_ids = torch.tensor([[selected_token_id]])
         selected_token_str = tokenizer.decode([selected_token_id])
 
         yield {
@@ -89,7 +96,6 @@ def generate_stream(
 
 if __name__ == "__main__":
     try:
-        # load model first so weight progress bar finishes before prompt text
         model, tokenizer = load_model_and_tokenizer()
 
         test_prompt = "What is the chemical symbol for gold?"
