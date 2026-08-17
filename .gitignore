@@ -92,3 +92,7 @@ wandb/
 
 # jupyter notebooks 
 .ipynb_checkpoints
+
+# local database
+*.db
+*.sqlite3
