@@ -62,6 +62,19 @@ def authenticate_user(email: str, password: str, db_path: str = DB_PATH) -> bool
     stored_hash = row[0]
     return bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8"))
 
+def delete_user(email: str, password: str, db_path: str = DB_PATH) -> bool:
+    # verify user credentials before executing account deletion
+    if not authenticate_user(email, password, db_path):
+        return False
+
+    email_clean = email.strip().lower()
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE email = ?", (email_clean,))
+    conn.commit()
+    conn.close()
+    return True
+
 
 if __name__ == "__main__":
     init_db()
@@ -77,3 +90,5 @@ if __name__ == "__main__":
 
     invalid_login = authenticate_user(test_email, "wrongpass")
     print(f"Login with wrong password: {'Rejected (Expected)' if not invalid_login else 'Vulnerability!'}")
+
+    
