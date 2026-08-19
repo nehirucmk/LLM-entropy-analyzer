@@ -9,11 +9,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# initialize session variables
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "user_email" not in st.session_state:
     st.session_state.user_email = ""
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "dashboard"
 
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 
@@ -78,16 +79,34 @@ def render_app():
     st.sidebar.title("Telemetry Engine")
     st.sidebar.write(f"Active User: **{st.session_state.user_email}**")
 
-    navigation = st.sidebar.radio(
-        "Navigation",
-        ["Dashboard", "Settings"],
-        index=0
+    # native button navigation with active state highlighting
+    st.sidebar.markdown("### Menu")
+    
+    col_dash = st.sidebar.button(
+        "Dashboard", 
+        use_container_width=True, 
+        type="primary" if st.session_state.current_page == "dashboard" else "secondary"
     )
+    if col_dash:
+        st.session_state.current_page = "dashboard"
+        st.rerun()
+
+    col_sett = st.sidebar.button(
+        "Settings", 
+        use_container_width=True, 
+        type="primary" if st.session_state.current_page == "settings" else "secondary"
+    )
+    if col_sett:
+        st.session_state.current_page = "settings"
+        st.rerun()
+
+    st.sidebar.markdown("---")
 
     if st.sidebar.button("Logout", use_container_width=True):
         clear_session()
         st.rerun()
 
+    # account settings and secure account deletion
     with st.sidebar.expander("⚙️ Account Settings"):
         st.markdown("##### Danger Zone")
         confirm_pass = st.text_input("Confirm password to delete", type="password", key="delete_pass_input")
@@ -101,10 +120,13 @@ def render_app():
                     st.rerun()
                 else:
                     st.error("Incorrect password. Deletion rejected.")
-    if navigation== "Dashboard":
-        st.title("Telemetry Dashboard")
-    elif navigation == "Settings":
+
+    # routing based on button state
+    if st.session_state.current_page == "dashboard":
+        st.title("TELEMETRY DASHBOARD")
+    elif st.session_state.current_page == "settings":
         render_settings()
+
 if not st.session_state.logged_in:
     login_gate()
 else:
