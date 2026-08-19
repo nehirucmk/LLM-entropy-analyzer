@@ -1,6 +1,7 @@
 import re
 import streamlit as st
 from auth import authenticate_user, register_user, delete_user
+from settings import init_settings, render_settings
 
 st.set_page_config(
     page_title="LLM ENTROPY ANALYZER",
@@ -77,6 +78,12 @@ def render_app():
     st.sidebar.title("Telemetry Engine")
     st.sidebar.write(f"Active User: **{st.session_state.user_email}**")
 
+    navigation = st.sidebar.radio(
+        "Navigation",
+        ["Dashboard", "Settings"],
+        index=0
+    )
+
     if st.sidebar.button("Logout", use_container_width=True):
         clear_session()
         st.rerun()
@@ -94,9 +101,10 @@ def render_app():
                     st.rerun()
                 else:
                     st.error("Incorrect password. Deletion rejected.")
-
-    st.title("Telemetry Dashboard")
-
+    if navigation== "Dashboard":
+        st.title("Telemetry Dashboard")
+    elif navigation == "Settings":
+        render_settings()
 if not st.session_state.logged_in:
     login_gate()
 else:
