@@ -93,120 +93,127 @@ def login_gate():
                     st.error("Registration failed. Email might already be in use.")
 
 def render_dashboard():
-    col_chat, col_stats = st.columns([1.3, 1], gap="large")
+    col_chat, col_stats = st.columns([1.2, 1], gap="medium")
 
     with col_stats:
-        st.subheader("Telemetry Monitor")
-        m1, m2 = st.columns(2)
-        metric_h = m1.empty()
-        metric_z = m2.empty()
-        status_box = st.empty()
-        
-        st.caption("Live Real-Time Entropy & Z-Score Trajectory")
+        st.markdown("##### Telemetry Monitor")
+
+        top_row = st.columns([1, 1, 1.2])
+        metric_h = top_row[0].empty()
+        metric_z = top_row[1].empty()
+        status_box = top_row[2].empty()
+
         chart_placeholder = st.empty()
         candidates_placeholder = st.empty()
 
-    with col_chat:
-        st.subheader("Live Model Stream")
+        # initial state rendering before prompt execution
+        if not st.session_state.latest_telemetry:
+            metric_h.metric("Entropy (H)", "--")
+            metric_z.metric("Z-Score", "--")
+            status_box.info("Idle")
+            chart_placeholder.caption("Entropy & Z-Score trajectory will appear during generation.")
+        else:
+            latest = st.session_state.latest_telemetry[-1]
+            z_thresh = float(st.session_state.settings["z_threshold"])
+            
+            metric_h.metric("Entropy (H)", f"{float(latest['entropy']):.2f}")
+            metric_z.metric("Z-Score", f"{float(latest['z_score']):.2f}")
 
-        for msg in st.session_state.messages:
-            avatar_icon = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
-            with st.chat_message(msg["role"], avatar=avatar_icon):
-                st.markdown(msg["content"])
+            if latest["z_score"] >= z_thresh:
+                status_box.error(f"Spike (Z ≥ {z_thresh:.1f})")
+            elif latest["z_score"] >= 1.5:
+                status_box.warning("Shift (Z ≥ 1.5)")
+            else:
+                status_box.success("Stable")
+
+            historical_payload = {
+                "Entropy (H)": [float(d["entropy"]) for d in st.session_state.latest_telemetry],
+                "Z-Score": [float(d["z_score"]) for d in st.session_state.latest_telemetry]
+            }
+            chart_placeholder.line_chart(historical_payload, height=150)
+
+            if "candidates" in latest and latest["candidates"]:
+                candidates_placeholder.plotly_chart(
+                    create_candidate_distribution_plot(latest["candidates"]),
+                    use_container_width=True,
+                    config={"displayModeBar": False}
+                )
+
+    with col_chat:
+        st.markdown("##### Live Model Stream")
+        chat_box = st.container(height=420)
+
+        with chat_box:
+            if not st.session_state.messages:
+                with st.chat_message("assistant", avatar=BOT_AVATAR):
+                    st.markdown("Enter a prompt")
+            else:
+                for msg in st.session_state.messages:
+                    avatar_icon = USER_AVATAR if msg["role"] == "user" else BOT_AVATAR
+                    with st.chat_message(msg["role"], avatar=avatar_icon):
+                        st.markdown(msg["content"])
 
         prompt = st.chat_input("Ask a question to monitor uncertainty:")
         if prompt:
             st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user", avatar=USER_AVATAR):
-                st.markdown(prompt)
+            
+            with chat_box:
+                with st.chat_message("user", avatar=USER_AVATAR):
+                    st.markdown(prompt)
 
             model, tokenizer = get_cached_model()
             config = st.session_state.settings
             z_thresh = float(config["z_threshold"])
 
-            with st.chat_message("assistant", avatar=BOT_AVATAR):
-                text_placeholder = st.empty()
-                full_response = ""
-                current_stream_data = []
+            with chat_box:
+                with st.chat_message("assistant", avatar=BOT_AVATAR):
+                    text_placeholder = st.empty()
+                    full_response = ""
+                    current_stream_data = []
 
-                stream = generate_stream(
-                    prompt=prompt,
-                    max_new_tokens=int(config["max_new_tokens"]),
-                    model=model,
-                    tokenizer=tokenizer,
-                    temperature=float(config["temperature"]),
-                    top_k=int(config["top_k"]),
-                    window_size=int(config["window_size"])
-                )
-
-                for packet in stream:
-                    # 1. Typewriter text stream
-                    full_response += packet["token"]
-                    current_stream_data.append(packet)
-                    text_placeholder.markdown(full_response + "▌")
-
-                    # 2. Numerical metric stream
-                    metric_h.metric("Current Entropy (H)", f"{float(packet['entropy']):.2f}")
-                    metric_z.metric("Moving Z-Score", f"{float(packet['z_score']):.2f}")
-
-                    # 3. Status warning indicator
-                    if packet["z_score"] >= z_thresh:
-                        status_box.error(f"🔴 Uncertainty Spike (Z >= {z_thresh:.1f})")
-                    elif packet["z_score"] >= 1.5:
-                        status_box.warning("🟡 Moderate Entropy Shift")
-                    else:
-                        status_box.success("🟢 Stable Token Generation")
-
-                    # 4. Live trajectory line stream
-                    chart_payload = {
-                        "Entropy (H)": [float(d["entropy"]) for d in current_stream_data],
-                        "Z-Score": [float(d["z_score"]) for d in current_stream_data]
-                    }
-                    chart_placeholder.line_chart(chart_payload, height=220)
-
-                    # 5. LIVE TOP-K CANDIDATE DISTRIBUTION STREAM ON EVERY TOKEN
-                    if "candidates" in packet and packet["candidates"]:
-                        candidates_placeholder.plotly_chart(
-                            create_candidate_distribution_plot(packet["candidates"]),
-                            use_container_width=True,
-                            config={"displayModeBar": False},
-                            key=f"cand_live_{len(current_stream_data)}"
-                        )
-
-                # Finalize assistant output
-                text_placeholder.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-                st.session_state.latest_telemetry = current_stream_data
-
-        else:
-            if not st.session_state.latest_telemetry:
-                status_box.info("Awaiting generation stream. Telemetry metrics and charts will render upon prompt.")
-            else:
-                latest = st.session_state.latest_telemetry[-1]
-                z_thresh = float(st.session_state.settings["z_threshold"])
-                metric_h.metric("Current Entropy (H)", f"{float(latest['entropy']):.2f}")
-                metric_z.metric("Moving Z-Score", f"{float(latest['z_score']):.2f}")
-
-                if latest["z_score"] >= z_thresh:
-                    status_box.error(f"🔴 Uncertainty Spike (Z >= {z_thresh:.1f})")
-                elif latest["z_score"] >= 1.5:
-                    status_box.warning("🟡 Moderate Entropy Shift")
-                else:
-                    status_box.success("🟢 Stable Token Generation")
-
-                historical_payload = {
-                    "Entropy (H)": [float(d["entropy"]) for d in st.session_state.latest_telemetry],
-                    "Z-Score": [float(d["z_score"]) for d in st.session_state.latest_telemetry]
-                }
-                chart_placeholder.line_chart(historical_payload, height=220)
-
-                if "candidates" in latest and latest["candidates"]:
-                    candidates_placeholder.plotly_chart(
-                        create_candidate_distribution_plot(latest["candidates"]),
-                        use_container_width=True,
-                        config={"displayModeBar": False}
+                    stream = generate_stream(
+                        prompt=prompt,
+                        max_new_tokens=int(config["max_new_tokens"]),
+                        model=model,
+                        tokenizer=tokenizer,
+                        temperature=float(config["temperature"]),
+                        top_k=int(config["top_k"]),
+                        window_size=int(config["window_size"])
                     )
 
+                    for packet in stream:
+                        full_response += packet["token"]
+                        current_stream_data.append(packet)
+                        text_placeholder.markdown(full_response + "▌")
+
+                        # update pre-initialized placeholders safely
+                        metric_h.metric("Entropy (H)", f"{float(packet['entropy']):.2f}")
+                        metric_z.metric("Z-Score", f"{float(packet['z_score']):.2f}")
+
+                        if packet["z_score"] >= z_thresh:
+                            status_box.error(f"Spike (Z ≥ {z_thresh:.1f})")
+                        elif packet["z_score"] >= 1.5:
+                            status_box.warning("Shift (Z ≥ 1.5)")
+                        else:
+                            status_box.success("Stable")
+
+                        chart_payload = {
+                            "Entropy (H)": [float(d["entropy"]) for d in current_stream_data],
+                            "Z-Score": [float(d["z_score"]) for d in current_stream_data]
+                        }
+                        chart_placeholder.line_chart(chart_payload, height=150)
+
+                        if "candidates" in packet and packet["candidates"]:
+                            candidates_placeholder.plotly_chart(
+                                create_candidate_distribution_plot(packet["candidates"]),
+                                use_container_width=True,
+                                config={"displayModeBar": False},
+                                key=f"cand_live_{len(current_stream_data)}"
+                            )
+
+                    text_placeholder.markdown(full_response)
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    st.session_state.latest_telemetry = current_stream_data
 def render_app():
     st.sidebar.title("Telemetry Engine")
     st.sidebar.write(f"Active User: **{st.session_state.user_email}**")
@@ -237,7 +244,7 @@ def render_app():
         clear_session()
         st.rerun()
 
-    with st.sidebar.expander("⚙️ Account Settings"):
+    with st.sidebar.expander(" Account Settings"):
         st.markdown("##### Danger Zone")
         confirm_pass = st.text_input("Confirm password to delete", type="password", key="delete_pass_input")
         if st.button("Delete Account", type="primary", use_container_width=True):
