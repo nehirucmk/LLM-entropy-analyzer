@@ -122,14 +122,13 @@ def create_candidate_distribution_plot(candidates: List[Dict[str, Any]]) -> go.F
     )
 
     fig.update_layout(
-        title=dict(text="Top-K Candidate Probabilities", font=dict(size=12, color="#e2e8f0")),
         template="plotly_dark",
-        height=220,
-        margin=dict(l=10, r=10, t=30, b=10),
+        height=160,
+        margin=dict(l=5, r=5, t=20, b=5),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(15,23,42,0.6)",
         xaxis=dict(
-            title="Softmax Probability (%)", 
+            title="", 
             range=[0, 100], 
             gridcolor="rgba(255,255,255,0.05)"
         ),
