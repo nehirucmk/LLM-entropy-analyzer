@@ -1,4 +1,5 @@
 import re
+import time
 import streamlit as st
 from auth import authenticate_user, register_user, delete_user
 from settings import init_settings, render_settings
@@ -12,7 +13,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# theme-adaptive material avatars that inherit config.toml colors
+SESSION_TIMEOUT_SECONDS = 1800  # 30 minutes inactivity timeout
+
 USER_AVATAR = ":material/person:"
 BOT_AVATAR = ":material/smart_toy:"
 
@@ -31,6 +33,8 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "latest_telemetry" not in st.session_state:
     st.session_state.latest_telemetry = []
+if "last_activity" not in st.session_state:
+    st.session_state.last_activity = time.time()
 
 init_settings()
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
@@ -43,6 +47,17 @@ def clear_session():
     st.session_state.user_email = ""
     st.session_state.messages = []
     st.session_state.latest_telemetry = []
+    st.session_state.last_activity = time.time()
+
+def check_session_timeout():
+    if st.session_state.logged_in:
+        elapsed = time.time() - st.session_state.last_activity
+        if elapsed > SESSION_TIMEOUT_SECONDS:
+            clear_session()
+            st.warning("⏱Session expired due to inactivity. Please log in again.")
+            st.rerun()
+        else:
+            st.session_state.last_activity = time.time()
 
 def login_gate():
     st.title("LLM Entropy Analyzer")
@@ -61,13 +76,15 @@ def login_gate():
             elif not is_valid_email(clean_email):
                 st.error("Please enter a valid email address")
             else:
-                if authenticate_user(clean_email, login_pass):
+                is_auth, auth_msg = authenticate_user(clean_email, login_pass)
+                if is_auth:
                     st.session_state.logged_in = True
                     st.session_state.user_email = clean_email
+                    st.session_state.last_activity = time.time()
                     st.success("Authentication successful")
                     st.rerun()
                 else:
-                    st.error("Invalid email or password")
+                    st.error(auth_msg)
 
     with tab_register:
         st.subheader("Create New Account")
@@ -106,7 +123,6 @@ def render_dashboard():
         chart_placeholder = st.empty()
         candidates_placeholder = st.empty()
 
-        # initial state rendering before prompt execution
         if not st.session_state.latest_telemetry:
             metric_h.metric("Entropy (H)", "--")
             metric_z.metric("Z-Score", "--")
@@ -186,7 +202,6 @@ def render_dashboard():
                         current_stream_data.append(packet)
                         text_placeholder.markdown(full_response + "▌")
 
-                        # update pre-initialized placeholders safely
                         metric_h.metric("Entropy (H)", f"{float(packet['entropy']):.2f}")
                         metric_z.metric("Z-Score", f"{float(packet['z_score']):.2f}")
 
@@ -214,7 +229,10 @@ def render_dashboard():
                     text_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
                     st.session_state.latest_telemetry = current_stream_data
+
 def render_app():
+    check_session_timeout()
+
     st.sidebar.title("Telemetry Engine")
     st.sidebar.write(f"Active User: **{st.session_state.user_email}**")
 
@@ -244,7 +262,7 @@ def render_app():
         clear_session()
         st.rerun()
 
-    with st.sidebar.expander(" Account Settings"):
+    with st.sidebar.expander("Account Settings"):
         st.markdown("##### Danger Zone")
         confirm_pass = st.text_input("Confirm password to delete", type="password", key="delete_pass_input")
         if st.button("Delete Account", type="primary", use_container_width=True):
