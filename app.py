@@ -6,6 +6,7 @@ from settings import init_settings, render_settings
 from model_loader import load_model_and_tokenizer
 from generator import generate_stream
 from visuals import create_candidate_distribution_plot
+from lab import render_entropy_lab
 
 st.set_page_config(
     page_title="LLM ENTROPY ANALYZER",
@@ -247,6 +248,15 @@ def render_app():
         st.session_state.current_page = "dashboard"
         st.rerun()
 
+    col_lab = st.sidebar.button(
+        "Entropy Lab", 
+        use_container_width=True, 
+        type="primary" if st.session_state.current_page == "lab" else "secondary"
+    )
+    if col_lab:
+        st.session_state.current_page = "lab"
+        st.rerun()
+
     col_sett = st.sidebar.button(
         "Settings", 
         use_container_width=True, 
@@ -278,6 +288,8 @@ def render_app():
 
     if st.session_state.current_page == "dashboard":
         render_dashboard()
+    elif st.session_state.current_page == "lab":
+        render_entropy_lab(get_cached_model)
     elif st.session_state.current_page == "settings":
         render_settings()
 
