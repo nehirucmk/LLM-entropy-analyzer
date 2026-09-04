@@ -1,5 +1,3 @@
-(this project is still under development!)
-
 # llm entropy analyzer
 
 real-time uncertainty quantification and token stream telemetry monitoring engine for large language models. built for local hardware constraints with direct logits inspection.
